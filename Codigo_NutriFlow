@@ -34,9 +34,10 @@ class PacienteDTO:
 
 # Herança Nível 1
 class Pessoa:
-    def __init__(self, nome: str, cpf: str):
+    def __init__(self, nome: str, cpf: str, email: str): # 3 atributos
         self.nome: str = nome
         self.cpf: str = cpf
+        self.email: str = email
 
     # Método para Polimorfismo 1
     def exibir_perfil(self) -> str:
@@ -52,9 +53,10 @@ class Pessoa:
 
 # Herança Nível 2
 class FuncionarioHospital(Pessoa):
-    def __init__(self, nome: str, cpf: str, matricula: str, ativo: bool = True):
-        super().__init__(nome, cpf)
+    def __init__(self, nome: str, cpf: str, email: str, matricula: str, setor: str, ativo: bool = True):
+        super().__init__(nome, cpf, email)
         self.matricula: str = matricula
+        self.setor: str = setor # 3º atributo aqui
         self.ativo: bool = ativo
 
     def exibir_perfil(self) -> str:
