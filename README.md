@@ -1,0 +1,226 @@
+from dataclasses import dataclass, field
+from typing import List, Dict
+
+
+class HospitalAppError(Exception):
+    """Classe base para exceções do sistema hospitalar."""
+    pass
+
+class AcessoNaoAutorizadoError(HospitalAppError):
+    pass
+
+class PacienteNaoEncontradoError(HospitalAppError):
+    pass
+
+class RestricaoAlimentarVioladaError(HospitalAppError):
+    pass
+
+
+@dataclass
+class DietaDTO:
+    id_dieta: int
+    nome: str
+    calorias: int
+    ingredientes: List[str]
+
+@dataclass
+class PacienteDTO:
+    id_paciente: int
+    nome: str
+    quarto: str
+    restricoes_alimentares: List[str]
+    dieta_atual: str = "Aguardando Prescrição"
+
+
+# Herança Nível 1
+class Pessoa:
+    def __init__(self, nome: str, cpf: str):
+        self.nome: str = nome
+        self.cpf: str = cpf
+
+    # Método para Polimorfismo 1
+    def exibir_perfil(self) -> str:
+        return f"Pessoa: {self.nome}"
+
+    # Método para Polimorfismo 2
+    def validar_acesso(self) -> bool:
+        return False
+
+    # Método para Polimorfismo 3
+    def calcular_bonus_plantao(self, horas: int) -> float:
+        return 0.0
+
+# Herança Nível 2
+class FuncionarioHospital(Pessoa):
+    def __init__(self, nome: str, cpf: str, matricula: str, ativo: bool = True):
+        super().__init__(nome, cpf)
+        self.matricula: str = matricula
+        self.ativo: bool = ativo
+
+    def exibir_perfil(self) -> str:
+        status = "Ativo" if self.ativo else "Inativo"
+        return f"Funcionário [{status}]: {self.nome} (Matrícula: {self.matricula})"
+
+    def validar_acesso(self) -> bool:
+        return self.ativo
+
+    def calcular_bonus_plantao(self, horas: int) -> float:
+        return horas * 15.0  # Bônus padrão
+
+class ConselhoProfissional:
+    def __init__(self, registro_crn: str):
+        self.registro_crn: str = registro_crn
+
+    def validar_registro(self) -> bool:
+        return len(self.registro_crn) > 0
+
+# Herança Nível 3 + Herança Múltipla
+class Nutricionista(FuncionarioHospital, ConselhoProfissional):
+    def __init__(self, nome: str, cpf: str, matricula: str, registro_crn: str, valor_hora: float):
+        FuncionarioHospital.__init__(self, nome, cpf, matricula)
+        ConselhoProfissional.__init__(self, registro_crn)
+        self.valor_hora: float = valor_hora
+        self.prescricoes_realizadas: int = 0
+
+    def exibir_perfil(self) -> str:
+        return f"Nutricionista: {self.nome} | CRN: {self.registro_crn} | Prescrições: {self.prescricoes_realizadas}"
+
+    def validar_acesso(self) -> bool:
+        return self.ativo and self.validar_registro()
+
+    def calcular_bonus_plantao(self, horas: int) -> float:
+        return (self.valor_hora * horas) * 1.2  # 20% de adicional para especialistas
+
+
+class HospitalManager:
+    def __init__(self):
+        # Armazenamento em memória (Dicionários)
+        self.pacientes: Dict[int, PacienteDTO] = {}
+        self.dietas: Dict[int, DietaDTO] = {}
+        self._id_paciente: int = 1
+        self._id_dieta: int = 1
+
+    def cadastrar_paciente(self, nome: str, quarto: str, restricoes: List[str]) -> None:
+        novo_paciente = PacienteDTO(self._id_paciente, nome, quarto, [r.lower() for r in restricoes])
+        self.pacientes[self._id_paciente] = novo_paciente
+        self._id_paciente += 1
+
+    def cadastrar_dieta(self, nome: str, calorias: int, ingredientes: List[str]) -> None:
+        nova_dieta = DietaDTO(self._id_dieta, nome, calorias, [i.lower() for i in ingredientes])
+        self.dietas[self._id_dieta] = nova_dieta
+        self._id_dieta += 1
+
+    def prescrever_dieta(self, id_paciente: int, id_dieta: int, profissional: Nutricionista) -> None:
+        # Tratamento de Erros Moderno com regras de negócio
+        try:
+            if not profissional.validar_acesso():
+                raise AcessoNaoAutorizadoError(f"Profissional {profissional.nome} com CRN inválido ou inativo.")
+
+            if id_paciente not in self.pacientes:
+                raise PacienteNaoEncontradoError(f"O ID de paciente {id_paciente} não existe no sistema.")
+
+            if id_dieta not in self.dietas:
+                raise ValueError("O ID da dieta informada não existe.")
+
+            paciente = self.pacientes[id_paciente]
+            dieta = self.dietas[id_dieta]
+
+            # Validação da regra de negócio: Restrições alimentares
+            for ingrediente in dieta.ingredientes:
+                for restricao in paciente.restricoes_alimentares:
+                    if restricao in ingrediente:
+                        raise RestricaoAlimentarVioladaError(
+                            f"ALERTA CLÍNICO: A dieta '{dieta.nome}' contém '{ingrediente}', "
+                            f"o que viola a restrição do paciente para '{restricao}'."
+                        )
+
+            # Executa regra de negócio se tudo der certo
+            paciente.dieta_atual = dieta.nome
+            profissional.prescricoes_realizadas += 1
+
+        except (AcessoNaoAutorizadoError, PacienteNaoEncontradoError, RestricaoAlimentarVioladaError) as e:
+            print(f"\n[ERRO DE NEGÓCIO] {e}")
+        except ValueError as e:
+            print(f"\n[ERRO DE ENTRADA] {e}")
+        else:
+            print(f"\n[SUCESSO] Dieta '{dieta.nome}' prescrita com sucesso para o paciente {paciente.nome}.")
+        finally:
+            print("[LOG] Auditoria: Tentativa de prescrição registrada no sistema.")
+
+    def buscar_pacientes_por_restricao(self, alergia: str) -> List[PacienteDTO]:
+        # List Comprehension para filtro avançado
+        return [p for p in self.pacientes.values() if alergia.lower() in p.restricoes_alimentares]
+
+
+def main():
+    sistema = HospitalManager()
+
+    # Massa de dados de teste (Mocks)
+    nutri = Nutricionista("Dr. Pedro Junior Fonseca Costa Pereira da Silva Neto", "111.222.333-44", "MAT001", "CRN-9988", 80.0)
+
+    sistema.cadastrar_dieta("Dieta Padrão", 2000, ["arroz", "feijão", "frango", "leite", "glúten"])
+    sistema.cadastrar_dieta("Dieta Líquida Restrita", 800, ["água", "chá", "gelatina", "caldo de legumes"])
+    sistema.cadastrar_dieta("Dieta Zero Lactose", 1800, ["arroz", "soja", "peixe", "legumes"])
+
+    sistema.cadastrar_paciente("João Silva", "101A", ["leite", "amendoim"])
+    sistema.cadastrar_paciente("Maria Souza", "102B", ["glúten"])
+    sistema.cadastrar_paciente("Carlos Mendes", "205C", []) # Sem restrições
+
+    while True:
+        print("\n" + "="*45)
+        print(" SISTEMA DE NUTRIÇÃO HOSPITALAR ")
+        print("="*45)
+        print("1. Listar Pacientes Internados")
+        print("2. Listar Dietas Disponíveis")
+        print("3. Prescrever Dieta para Paciente")
+        print("4. Buscar Pacientes por Alergia/Restrição")
+        print("5. Exibir Perfil do Nutricionista Logado")
+        print("6. Sair")
+
+        opcao = input("Escolha uma opção: ")
+
+        # Match/Case implementado (Aula 02)
+        match opcao:
+            case "1":
+                print("\n--- PACIENTES INTERNADOS ---")
+                for p in sistema.pacientes.values():
+                    rest = ", ".join(p.restricoes_alimentares) if p.restricoes_alimentares else "Nenhuma"
+                    print(f"ID {p.id_paciente} | {p.nome} (Quarto {p.quarto}) | Restrições: {rest} | Dieta: {p.dieta_atual}")
+
+            case "2":
+                print("\n--- DIETAS CADASTRADAS ---")
+                for d in sistema.dietas.values():
+                    print(f"ID {d.id_dieta} | {d.nome} ({d.calorias} kcal) | Ingredientes: {', '.join(d.ingredientes)}")
+
+            case "3":
+                try:
+                    id_pac = int(input("Digite o ID do paciente: "))
+                    id_die = int(input("Digite o ID da dieta a ser prescrita: "))
+                    sistema.prescrever_dieta(id_pac, id_die, nutri)
+                except ValueError:
+                    print("\n[ERRO] Os IDs devem ser valores numéricos.")
+
+            case "4":
+                alergia = input("Digite o alimento/alergia para buscar os pacientes (ex: leite, glúten): ")
+                compativeis = sistema.buscar_pacientes_por_restricao(alergia)
+                print(f"\n--- PACIENTES COM RESTRIÇÃO A '{alergia.upper()}' ---")
+                if compativeis:
+                    for p in compativeis:
+                        print(f"- {p.nome} (Quarto: {p.quarto})")
+                else:
+                    print("Nenhum paciente encontrado com essa restrição.")
+
+            case "5":
+                print("\n--- DADOS DO PROFISSIONAL LOGADO ---")
+                print(nutri.exibir_perfil())
+                print(f"Adicional de Plantão (12h): R$ {nutri.calcular_bonus_plantao(12):.2f}")
+
+            case "6":
+                print("\nEncerrando o sistema do hospital. Plantão finalizado!")
+                break
+
+            case _:
+                print("\n[ERRO] Opção inválida.")
+
+if __name__ == "__main__":
+    main()
